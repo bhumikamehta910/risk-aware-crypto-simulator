@@ -71,6 +71,31 @@ class TradeIntegrationTest {
     }
 
     @Test
+    void portfolioTracksSettledAverageCostAndIsolatesOwners() throws Exception {
+        UUID firstOwner = user;
+        assertThat(order(UUID.randomUUID(), "ETH", "BUY", "1").getStatus()).isEqualTo(200);
+        var price = new BigDecimal("3500.00");
+        doReturn(new MarketBook.Price(TradingApi.Asset.ETH, price, "COINBASE_USD", java.time.Instant.now()))
+                .when(market).executable(TradingApi.Asset.ETH);
+        assertThat(order(UUID.randomUUID(), "ETH", "BUY", "1").getStatus()).isEqualTo(200);
+        assertThat(order(UUID.randomUUID(), "ETH", "SELL", "0.5").getStatus()).isEqualTo(200);
+        var portfolio = read("/api/portfolio");
+        var position = portfolio.get("positions").get(0);
+        assertThat(portfolio.get("cashUsd").decimalValue()).isEqualByComparingTo("5750");
+        assertThat(position.get("quantity").decimalValue()).isEqualByComparingTo("1.5");
+        assertThat(position.get("averagePriceUsd").decimalValue()).isEqualByComparingTo("3000");
+        assertThat(position.get("costUsd").decimalValue()).isEqualByComparingTo("4500");
+        assertThat(order(UUID.randomUUID(), "ETH", "SELL", "1.5").getStatus()).isEqualTo(200);
+        assertThat(read("/api/portfolio").get("positions").isEmpty()).isTrue();
+        assertThat(order(UUID.randomUUID(), "ETH", "BUY", "1").getStatus()).isEqualTo(200);
+        assertThat(read("/api/portfolio").get("positions").get(0).get("costUsd").decimalValue()).isEqualByComparingTo(price);
+        openAccount();
+        var other = read("/api/portfolio?userId=" + firstOwner);
+        assertThat(other.get("cashUsd").decimalValue()).isEqualByComparingTo("10000");
+        assertThat(other.get("positions").isEmpty()).isTrue();
+    }
+
+    @Test
     void outageBlocksNewOrdersButReplaysStoredLiveReceipt() throws Exception {
         var asset = TradingApi.Asset.BTC;
         var time = java.time.Instant.parse("2026-11-20T06:12:01.123456Z");

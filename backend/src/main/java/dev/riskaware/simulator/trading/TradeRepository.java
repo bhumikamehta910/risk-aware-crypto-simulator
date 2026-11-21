@@ -20,6 +20,14 @@ class TradeRepository {
 
     TradeRepository(JdbcClient db) { this.db = db; }
 
+    BigDecimal cash(UUID user) {
+        return db.sql("SELECT cash_usd FROM wallets WHERE user_id = ?").param(user).query(BigDecimal.class).single();
+    }
+
+    List<Trade> ledger(UUID user) {
+        return db.sql("SELECT * FROM trades WHERE user_id = ? ORDER BY executed_at, id").param(user).query(TRADE).list();
+    }
+
     BigDecimal lockCash(UUID user) {
         return db.sql("SELECT cash_usd FROM wallets WHERE user_id = ? FOR UPDATE")
                 .param(user).query(BigDecimal.class).single();

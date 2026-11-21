@@ -1,25 +1,10 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import './style.css'
-import { MarketPrices } from './MarketPrices'
+import { Dashboard } from './Dashboard'
+import { request, type Profile } from './api'
 
-type Profile = { id: string; email: string; virtualCashUsd: number }
 type Session = { accessToken: string; expiresInSeconds: number }
-
-async function request<T>(path: string, options: RequestInit): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch('/api/' + path, options)
-  } catch {
-    throw new Error('Connection lost. Check that the simulator is running and try again.')
-  }
-  if (!response.ok) {
-    const problem = await response.json().catch(() => ({}))
-    throw new Error(problem.errors?.join('. ') || problem.detail ||
-      (response.status === 401 ? 'Please sign in again.' : 'The account service is unavailable. Try again.'))
-  }
-  return response.json()
-}
 
 function App() {
   const [mode, setMode] = useState<'register' | 'login'>('register')
@@ -28,6 +13,7 @@ function App() {
   const [notice, setNotice] = useState('')
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
+  const [token, setToken] = useState('')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [expires, setExpires] = useState(0)
 
@@ -35,6 +21,7 @@ function App() {
     if (!expires) return
     const timer = window.setTimeout(() => {
       setProfile(null)
+      setToken('')
       setNotice('Your session expired. Sign in to continue.')
       setExpires(0)
     }, Math.max(0, expires - Date.now()))
@@ -61,6 +48,7 @@ function App() {
         const account = await request<Profile>('me', {
           headers: { Authorization: 'Bearer ' + session.accessToken }
         })
+        setToken(session.accessToken)
         setProfile(account)
         setExpires(Date.now() + session.expiresInSeconds * 1000)
       }
@@ -73,6 +61,12 @@ function App() {
   }
 
   const registering = mode === 'register'
+  if (profile) return <Dashboard profile={profile} token={token} onExit={message => {
+    setProfile(null)
+    setToken('')
+    setExpires(0)
+    setNotice(message)
+  }}/>
   return <main>
     <header className="flex items-center gap-3"><span className="mark" aria-hidden="true">◈</span>
       <div><strong>Risk-Aware</strong><small>Crypto Trading Simulator</small></div>
@@ -83,13 +77,7 @@ function App() {
         <div className="art" aria-hidden="true"><div className="coin-stack"><i/><i/><i/><i/><i/><i/></div></div>
         <div className="funds"><small>Opening virtual balance</small><b>$10,000<span>.00</span></b><span>USD</span></div>
       </aside>
-      <article>{profile ? <>
-        <p className="eyebrow">YOUR ACCOUNT</p><h2>Account overview</h2>
-        <p className="muted break-all">{profile.email}</p>
-        <dl><dt>Available virtual cash</dt><dd>{profile.virtualCashUsd.toLocaleString('en-US', {style:'currency',currency:'USD'})}</dd>
-        <dt>Account ID</dt><dd className="identifier">{profile.id}</dd></dl>
-        <button onClick={() => {setProfile(null); setExpires(0); setNotice('You have signed out.')}}>Sign out</button>
-      </> : <>
+      <article>
         <div className="switcher">{(['register', 'login'] as const).map(item =>
           <button key={item} type="button" aria-pressed={mode === item} disabled={busy}
             onClick={() => {setMode(item); setNotice(''); setError(''); setPassword('')}}>
@@ -104,9 +92,9 @@ function App() {
           {notice && <p role="status" className="notice">{notice}</p>}
           <button disabled={busy} className="action">{busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}<span aria-hidden="true">→</span></button>
         </form>
-      </>}</article>
+      </article>
     </section>
-    {profile && <MarketPrices/>}
+
     <footer>Virtual money only <span>·</span> Educational simulator <span>·</span> No financial advice</footer>
   </main>
 }

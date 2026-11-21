@@ -18,7 +18,17 @@ import static dev.riskaware.simulator.trading.TradingApi.*;
 class TradeController {
     private final TradeService trading;
 
-    TradeController(TradeService trading) { this.trading = trading; }
+    private final PortfolioService portfolios;
+
+    TradeController(TradeService trading, PortfolioService portfolios) {
+        this.trading = trading;
+        this.portfolios = portfolios;
+    }
+
+    @GetMapping("/portfolio")
+    PortfolioService.Portfolio portfolio(@AuthenticationPrincipal Jwt jwt) {
+        return portfolios.load(UUID.fromString(jwt.getSubject()));
+    }
 
     @GetMapping("/prices/mock")
     List<Quote> prices() {

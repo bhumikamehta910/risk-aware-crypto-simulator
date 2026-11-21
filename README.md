@@ -195,7 +195,7 @@ $env:MARKET_PROVIDER = 'AUTO'
 & .\.local-tools\start-api.ps1
 ```
 
-In a second window run `Set-Location "$HOME\Desktop\crypto\frontend"` and `npm.cmd run dev`. Sign in at [the simulator](http://127.0.0.1:5173) to see both assets, the mode, provider, connection status, latest price and exchange timestamp in local time. Swagger remains the trading interface.
+In a second window run `Set-Location "$HOME\Desktop\crypto\frontend"` and `npm.cmd run dev`. Sign in at [the simulator](http://127.0.0.1:5173) to use the trading dashboard. Swagger also supports the trading API.
 
 | Environment variable | Values and behavior |
 | --- | --- |
@@ -244,3 +244,68 @@ Run `.\mvnw.cmd verify` from `backend`, then use the earlier PostgreSQL test com
 | What happens on provider change? | The book clears the previous session's quotes. The alternate provider must publish a valid price for an asset before trading resumes. History uses a single source per window. |
 
 Provider contracts: [Binance spot streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams), [Binance daily klines](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints), [Coinbase ticker](https://docs.cdp.coinbase.com/exchange/websocket-feed/channels), [Coinbase daily candles](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-candles).
+
+## Phase 4 — trading and portfolio dashboard
+
+![Live paper-trading dashboard after a virtual BTC purchase, with a Binance chart, receipt, holdings and trade history](docs/dashboard-live.png)
+
+Sign in to see the portfolio, BTC/ETH feed, daily chart, order ticket, positions and execution history. The ticket supports fractional units, reviews an estimate and confirms with the price on the backend receipt. The chart offers 7 or 30 completed UTC days, a pointer readout and an accessible table of closes. A flat MOCK_FIXED chart uses the offline service's labeled fixed-price series. Missing days or a failed provider produce an error with a retry action.
+
+### Start and try a trade
+
+Use the Windows setup at the top for a new checkout. In the prepared workspace, stop any previous API instance in its terminal and run the packaged 0.4.0 API in PowerShell.
+
+```powershell
+Set-Location "$HOME\Desktop\crypto"
+$env:MARKET_MODE = 'MOCK_FIXED'
+& .\.local-tools\start-api.ps1
+```
+
+Open a second window for React.
+
+```powershell
+Set-Location "$HOME\Desktop\crypto\frontend"
+npm.cmd ci
+npm.cmd run dev
+```
+
+Open [the local dashboard](http://127.0.0.1:5173). On a fresh mock account, buy 0.02 BTC and sell 0.005 BTC. Expect $9,250 cash, 0.015 BTC worth $750, and $10,000 total value. Filter history by BTC and SELL to inspect the $250 receipt. To use actual prices, restart the API with `$env:MARKET_MODE = 'LIVE'`. The provider, timestamp and feed state appear beside the quotes. Binance's USDT pairs use the documented one-to-one virtual USD approximation.
+
+### Accounting and data flow
+
+| Measure | Definition |
+| --- | --- |
+| Cash | Settled virtual wallet balance. |
+| Holdings value | Sum of quantity × latest valid price for each open position. |
+| Total portfolio value | Cash plus holdings value. |
+| Total profit/loss | Total portfolio value less the original $10,000 grant. Includes gains or losses already realized through sales. |
+| Unrealized profit/loss | Current value of open positions less their remaining acquisition costs. |
+| Asset allocation | An asset's current value divided by total portfolio value, including cash. |
+
+`GET /api/portfolio` reads the JWT subject, wallet and ordered receipts in one read-only repeatable-read transaction. `PortfolioService` reconstructs moving-average acquisition cost with Java BigDecimal and DECIMAL128 division. Buys add their actual settled cash amount, including cent rounding. A partial sale removes the same fraction of acquisition cost as the units sold. Selling the last unit clears the basis. A later purchase starts a new position. For example, buying one ETH at $2,500 and another at $3,500 gives a $3,000 average. Selling 0.5 ETH at $3,500 leaves 1.5 ETH costing $4,500. At the sale price, unrealized gain is $750 and total gain is $1,000.
+
+The portfolio endpoint needs no schema migration and reads old receipts. Its work grows with the user's trade count. For this local simulator that keeps the calculation auditable. A larger deployment could maintain cost basis in the trade transaction. The browser uses JavaScript numbers to display indicative valuations and calculates them again on each WebSocket update. All settlement and persisted amounts use backend decimals. If any held asset lacks a current usable quote, aggregate valuation shows a dash. Cash stays available.
+
+### Reliability and interview notes
+
+- **How does the dashboard recover from a lost trade response?** On confirmation it saves the request body and its UUID for the signed-in account. A retry submits the same intent, including after reload and sign-in in the same tab. PostgreSQL returns the original receipt after a successful commit. The ticket disables further submission while a request is pending. Session storage contains the intent only. JWTs stay in React memory. If browser storage is disabled, pending intent recovery is limited to the mounted page.
+- **Why can the price move after review?** The estimate uses the last displayed quote. The server independently selects a fresh quote after acquiring the wallet lock. The success message uses the executed unit price and settled cash amount from that receipt.
+- **How do updates stay consistent?** A confirmed execution triggers a new portfolio snapshot and refreshes the active history filters. React cancels superseded reads. Market ticks update display values locally without fetching another account ledger. Trades in another tab become visible on reloading and signing in.
+- **What does an expired session do?** The local expiry timer and authenticated HTTP 401 responses each return the user to sign-in. Each portfolio query uses the token subject for ownership.
+
+### Repeatable checks and screenshot guidance
+
+Run the Maven verification and PostgreSQL test commands in the earlier verification section. The integration suite covers weighted acquisition costs, partial sales, full liquidation, repurchase, and owner isolation in addition to the earlier concurrency and idempotency checks. Run `npm.cmd run build` from `frontend` for TypeScript and Vite verification.
+
+With Microsoft Edge installed and the API and frontend running locally, execute the browser checks from another PowerShell window. Each run creates a disposable account in the selected database.
+
+```powershell
+Set-Location "$HOME\Desktop\crypto\frontend"
+$env:DASHBOARD_URL = 'http://127.0.0.1:5173'
+$env:DASHBOARD_TEST_MODE = 'MOCK_FIXED'
+npm.cmd run test:dashboard
+```
+
+The mock check exercises both assets and sides, a committed order whose response is dropped, retry and double-click behavior, price-driven value changes, stale prices, insufficient funds and holdings, filters, chart periods, a mobile viewport and session expiry. Injected price changes and a simulated HTTP 401 are confined to the test browser. Set both the backend and test mode to LIVE for the real-provider check, which places a virtual BTC order, reads the live receipt and displays the position.
+
+For a README or interview screenshot, use a disposable account and keep the market-mode indicator visible. Capture the overview after a buy and partial sale, then capture a filtered history row with its matching receipt. To save a full-page image during the mock test, set `$env:DASHBOARD_SCREENSHOT` to a writable absolute PNG path before running it.

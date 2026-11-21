@@ -22,7 +22,7 @@ import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
-@OpenAPIDefinition(info = @Info(title = "Risk-Aware Crypto Trading Simulator", version = "0.3",
+@OpenAPIDefinition(info = @Info(title = "Risk-Aware Crypto Trading Simulator", version = "0.4",
         description = "Educational paper trading with virtual USD. For learning only. No financial advice."))
 @SecurityScheme(name = "Bearer", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
 class SecurityConfig {
