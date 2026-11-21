@@ -22,7 +22,7 @@ import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.SecurityFilterChain;
 
 @Configuration
-@OpenAPIDefinition(info = @Info(title = "Risk-Aware Crypto Trading Simulator", version = "0.2",
+@OpenAPIDefinition(info = @Info(title = "Risk-Aware Crypto Trading Simulator", version = "0.3",
         description = "Educational paper trading with virtual USD. For learning only. No financial advice."))
 @SecurityScheme(name = "Bearer", type = SecuritySchemeType.HTTP, scheme = "bearer", bearerFormat = "JWT")
 class SecurityConfig {
@@ -56,6 +56,7 @@ class SecurityConfig {
                 .authorizeHttpRequests(a -> a
                         .dispatcherTypeMatchers(jakarta.servlet.DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/ws/prices").permitAll()
                         .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(s -> s.jwt(Customizer.withDefaults()))

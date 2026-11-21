@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createRoot } from 'react-dom/client'
 import './style.css'
+import { MarketPrices } from './MarketPrices'
 
 type Profile = { id: string; email: string; virtualCashUsd: number }
 type Session = { accessToken: string; expiresInSeconds: number }
@@ -105,6 +106,7 @@ function App() {
         </form>
       </>}</article>
     </section>
+    {profile && <MarketPrices/>}
     <footer>Virtual money only <span>·</span> Educational simulator <span>·</span> No financial advice</footer>
   </main>
 }

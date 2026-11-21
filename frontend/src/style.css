@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+.market-panel {margin-top:20px;padding:24px;background:white;border:1px solid #d3dbd2;border-radius:16px}
+.market-grid {display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:18px;margin-top:16px}
+.market-grid>div {border-top:1px solid #d3dbd2;padding-top:12px}
+.market-grid strong {display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.market-grid small,.market-grid time {font-size:12px;color:#53665e}
+
 :root { font-family: Inter, "Segoe UI", sans-serif; color: #183832; background: #f5f6f1; }
 main { max-width: 1160px; margin: auto; padding: 32px clamp(18px, 5vw, 64px); }
 header { margin-bottom: clamp(30px, 7vh, 78px); }

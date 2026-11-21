@@ -13,7 +13,7 @@ import static dev.riskaware.simulator.trading.TradingApi.*;
 
 @RestController
 @RequestMapping("/api")
-@Tag(name = "Virtual trading", description = "Fixed mock prices in virtual USD. BTC 50,000 and ETH 2,500.")
+@Tag(name = "Virtual trading", description = "Executions use the server's configured market mode. The legacy /prices/mock route always shows demonstration values.")
 @SecurityRequirement(name = "Bearer")
 class TradeController {
     private final TradeService trading;

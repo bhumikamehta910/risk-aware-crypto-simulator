@@ -17,6 +17,6 @@ public final class TradingApi {
     public record Quote(Asset asset, BigDecimal priceUsd, String priceSource) {}
     public record Holding(Asset asset, BigDecimal quantity) {}
     public record Trade(UUID id, Asset asset, Side side, BigDecimal quantity, BigDecimal priceUsd,
-                        BigDecimal totalUsd, String priceSource, Instant executedAt) {}
+                        BigDecimal totalUsd, String priceSource, Instant executedAt, Instant priceTime) {}
     public record History(List<Trade> trades, int page, int size, boolean hasNext) {}
 }

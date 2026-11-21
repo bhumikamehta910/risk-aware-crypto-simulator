@@ -2,6 +2,7 @@ package dev.riskaware.simulator.trading;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.riskaware.simulator.market.MarketBook;
 import dev.riskaware.simulator.security.TokenService;
 import java.math.BigDecimal;
 import java.util.*;
@@ -21,7 +22,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "market.mode=MOCK_FIXED")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class TradeIntegrationTest {
@@ -30,6 +31,7 @@ class TradeIntegrationTest {
     @Autowired JdbcTemplate db;
     @Autowired TokenService tokens;
     @MockitoSpyBean TradeRepository repository;
+    @MockitoSpyBean MarketBook market;
     UUID user;
     String bearer;
 
@@ -66,6 +68,25 @@ class TradeIntegrationTest {
         assertThat(db.queryForObject("select coalesce(sum(quantity),0) from holdings where user_id=?",
                 BigDecimal.class, user)).isEqualByComparingTo(held);
         assertThat(db.queryForObject("select count(*) from trades where user_id=?", Integer.class, user)).isEqualTo(trades);
+    }
+
+    @Test
+    void outageBlocksNewOrdersButReplaysStoredLiveReceipt() throws Exception {
+        var asset = TradingApi.Asset.BTC;
+        var time = java.time.Instant.parse("2026-11-20T06:12:01.123456Z");
+        var price = new BigDecimal("50000.12345678");
+        doReturn(new MarketBook.Price(asset, price, "COINBASE_USD", time)).when(market).executable(asset);
+        UUID key = UUID.randomUUID();
+        var receipt = tree(order(key, "BTC", "BUY", "0.1"));
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "BTC price is STALE")).when(market).executable(asset);
+        assertThat(order(UUID.randomUUID(), "BTC", "BUY", "0.1").getStatus()).isEqualTo(503);
+        assertThat(tree(order(key, "BTC", "BUY", "0.10"))).isEqualTo(receipt);
+        var stored = read("/api/trades").get("trades").get(0);
+        assertThat(stored.get("priceTime").asText()).isEqualTo(time.toString());
+        assertThat(stored.get("priceUsd").decimalValue()).isEqualByComparingTo(price);
+        assertThat(stored.get("priceSource").asText()).isEqualTo("COINBASE_USD");
+        state("4999.98", "0.1", 1);
     }
 
     @Test

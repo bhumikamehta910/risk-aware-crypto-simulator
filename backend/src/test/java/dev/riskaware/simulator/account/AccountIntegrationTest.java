@@ -23,7 +23,7 @@ import static org.mockito.Mockito.doThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
-@SpringBootTest(classes = SimulatorApplication.class)
+@SpringBootTest(classes = SimulatorApplication.class, properties = "market.mode=MOCK_FIXED")
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 class AccountIntegrationTest {

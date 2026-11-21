@@ -15,7 +15,8 @@ class TradeRepository {
     private static final RowMapper<Trade> TRADE = (rs, row) -> new Trade(
             rs.getObject("id", UUID.class), Asset.valueOf(rs.getString("asset")),
             Side.valueOf(rs.getString("side")), rs.getBigDecimal("quantity"), rs.getBigDecimal("price_usd"),
-            rs.getBigDecimal("total_usd"), rs.getString("price_source"), rs.getTimestamp("executed_at").toInstant());
+            rs.getBigDecimal("total_usd"), rs.getString("price_source"), rs.getTimestamp("executed_at").toInstant(),
+            Optional.ofNullable(rs.getTimestamp("price_time")).map(Timestamp::toInstant).orElse(null));
 
     TradeRepository(JdbcClient db) { this.db = db; }
 
@@ -53,10 +54,10 @@ class TradeRepository {
     void append(UUID user, UUID key, Trade t) {
         db.sql("""
                 INSERT INTO trades (id, user_id, request_key, asset, side, quantity,
-                                    price_usd, total_usd, price_source, executed_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    price_usd, total_usd, price_source, executed_at, price_time)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """).params(t.id(), user, key, t.asset().name(), t.side().name(), t.quantity(),
-                        t.priceUsd(), t.totalUsd(), t.priceSource(), Timestamp.from(t.executedAt())).update();
+                        t.priceUsd(), t.totalUsd(), t.priceSource(), Timestamp.from(t.executedAt()), Timestamp.from(t.priceTime())).update();
     }
 
     List<Holding> holdings(UUID user) {

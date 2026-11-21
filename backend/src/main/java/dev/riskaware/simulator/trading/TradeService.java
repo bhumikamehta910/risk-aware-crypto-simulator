@@ -1,6 +1,7 @@
 package dev.riskaware.simulator.trading;
 
 import java.math.BigDecimal;
+import dev.riskaware.simulator.market.MarketBook;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
@@ -16,7 +17,12 @@ import static dev.riskaware.simulator.trading.TradingApi.*;
 class TradeService {
     private final TradeRepository repository;
 
-    TradeService(TradeRepository repository) { this.repository = repository; }
+    private final MarketBook market;
+
+    TradeService(TradeRepository repository, MarketBook market) {
+        this.repository = repository;
+        this.market = market;
+    }
 
     @Transactional
     public Trade execute(UUID user, UUID key, Order order) {
@@ -32,7 +38,7 @@ class TradeService {
             return trade;
         }
 
-        Quote quote = MockPrices.quote(order.asset());
+        var quote = market.executable(order.asset());
         BigDecimal quantity = order.quantity().setScale(8);
         BigDecimal gross = quantity.multiply(quote.priceUsd());
         if (gross.compareTo(new BigDecimal("0.01")) < 0) {
@@ -48,7 +54,7 @@ class TradeService {
         if (nextHeld.signum() < 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient " + order.asset() + " holdings");
 
         var trade = new Trade(UUID.randomUUID(), order.asset(), order.side(), quantity, quote.priceUsd(),
-                total, quote.priceSource(), Instant.now().truncatedTo(ChronoUnit.MICROS));
+                total, quote.source(), Instant.now().truncatedTo(ChronoUnit.MICROS), quote.priceTime());
         repository.updateCash(user, nextCash);
         repository.updateHolding(user, order.asset(), held, nextHeld);
         repository.append(user, key, trade);

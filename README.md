@@ -2,7 +2,7 @@
 
 An educational paper-trading project for practicing with virtual USD. Phase 1 provides a persistent account, a $10,000 opening balance, and authenticated account lookup. A React client supports registration, sign-in and account overview. Swagger UI provides a second way to exercise the API. All balances are virtual. This project is for learning and does not provide financial advice.
 
-Phase 2 adds virtual BTC and ETH trading through Swagger and the HTTP API. All Phase 2 executions use fixed demonstration prices and carry the label `MOCK_FIXED`.
+Phase 3 supplies live BTC and ETH prices to the trading API and signed-in React account screen. The server defaults to LIVE. Set `MARKET_MODE=MOCK_FIXED` before startup for the reproducible Phase 2 demonstration below.
 
 ## Run locally on Windows
 
@@ -143,7 +143,7 @@ All four routes require the same bearer token used for `GET /api/me`. Use Swagge
 
 ### Try a buy, a retry, and a sale
 
-Run the API as above. In the prepared Windows workspace, the existing `.local-tools/start-api.ps1` launcher starts the 0.2.0 JAR. If the Phase 1 API is running, stop it with Ctrl+C first. After obtaining `$session` and `$api` in the account example, use these commands.
+For this fixed-price example, set `$env:MARKET_MODE = 'MOCK_FIXED'` in the backend PowerShell window before starting the API. After obtaining `$session` and `$api` in the account example, use these commands.
 
 ```powershell
 $auth = @{ Authorization = "Bearer $($session.accessToken)" }
@@ -182,4 +182,65 @@ Run the verification commands above for H2 or PostgreSQL. `TradeIntegrationTest`
 | Why are a transaction and a lock both necessary? | A transaction commits the writes together. The wallet lock also serializes the read-check-write sequence so a second order sees the first one's committed balance. |
 | What happens if the client times out after commit? | A retry with the same key reads the original execution from PostgreSQL. That also works after an application restart. |
 | What limits throughput? | Orders on one wallet execute sequentially. Separate wallets lock separate rows. This trade-off keeps account-level accounting simple. |
-| What are the limits of this simulation? | Orders fill completely at fixed mock prices with zero fees. History uses offset pagination, so new executions can shift later pages between reads. Live quotes and stale-price checks belong to Phase 3, and the dashboard trading interface belongs to Phase 4. |
+| What are the limits of this simulation? | Orders fill completely with zero fees. Mock mode uses fixed prices. History uses offset pagination, so new executions can shift later pages between reads. |
+
+## Phase 3 — live market data
+
+In the prepared Windows workspace, stop an older backend in its terminal with Ctrl+C, then run the following in PowerShell. For a fresh checkout, use the Maven and database instructions at the top.
+
+```powershell
+Set-Location "$HOME\Desktop\crypto"
+$env:MARKET_MODE = 'LIVE'
+$env:MARKET_PROVIDER = 'AUTO'
+& .\.local-tools\start-api.ps1
+```
+
+In a second window run `Set-Location "$HOME\Desktop\crypto\frontend"` and `npm.cmd run dev`. Sign in at [the simulator](http://127.0.0.1:5173) to see both assets, the mode, provider, connection status, latest price and exchange timestamp in local time. Swagger remains the trading interface.
+
+| Environment variable | Values and behavior |
+| --- | --- |
+| `MARKET_MODE` | `LIVE` (default) or `MOCK_FIXED`. Mock mode keeps the fixed BTC/ETH prices and provides a clearly labeled flat daily series, entirely offline. Restart the API to change mode. |
+| `MARKET_PROVIDER` | `AUTO` (default) starts with Binance and alternates with Coinbase after failures, including a silent subscription. Pin `BINANCE` or `COINBASE` to reconnect only to that exchange. Pin Coinbase if the Binance history service is inaccessible. |
+| `MARKET_MAX_AGE_SECONDS` | 1–120, default 20. A live order requires a connected feed and a quote inside this exchange-time window. Keep the server clock synchronized. |
+
+### APIs and execution
+
+| Route | Result |
+| --- | --- |
+| `GET /api/market/prices` | Authenticated snapshot of mode, provider and both assets. Each row has a status and a nullable quote. |
+| `WS /ws/prices` | Public, read-only market snapshots. A browser receives an initial snapshot, coalesced changes at most once a second, and a heartbeat snapshot approximately every ten seconds during quiet periods. Serve this path with WebSocket upgrade support alongside the HTTP API. Vite proxies both locally. |
+| `GET /api/market/history/BTC?days=30` | Authenticated daily closes, ascending by UTC date. Use BTC or ETH and 1–90 completed calendar days. The response includes asset, source, interval and prices. |
+| `POST /api/trades` | Same account, order and idempotency contract as Phase 2. New orders receive HTTP 503 while their asset is unavailable, stale, or disconnected. A successful retry returns the persisted execution even then. |
+
+The legacy `/api/prices/mock` route always lists demonstration values. Use `/api/market/prices` for the active trading mode. Binance quotes BTC/USDT and ETH/USDT. For virtual accounting the simulator values **one USDT at one virtual USD**. Coinbase quotes BTC/USD and ETH/USD directly. Source labels on receipts distinguish these conventions. A real USDT/USD deviation can affect comparisons across providers.
+
+### Follow a price from exchange to receipt
+
+1. `market/ExchangeFeed.java` opens one outbound public WebSocket using Java 21's HTTP client. `ExchangeData.java` extracts the last trade price and exchange trade timestamp for the two supported pairs. On disconnect the feed invalidates execution immediately. It reconnects with exponential backoff up to 60 seconds. AUTO can switch to the other live provider.
+2. `MarketBook.java` keeps the latest validated price per asset in memory. It rejects invalid decimals, future timestamps and older updates. Each connection has its own generation number, so a late callback from a previous connection cannot overwrite a current price. Restarting clears live quotes until fresh data arrives.
+3. `PriceSocket.java` sends public snapshots to connected browsers. `frontend/src/MarketPrices.tsx` closes a silent socket and reconnects with backoff. This coalescing protects the display from exchange tick volume. The service still reads the latest accepted tick when executing.
+4. `TradeService.java` locks the wallet, looks for an existing receipt, then asks the book for an executable quote. The exchange connection and historical HTTP requests are independent of this transaction. PostgreSQL stores the exact accepted unit price (up to 12 decimal places), its source, its market timestamp at microsecond precision, and the simulator's execution time. Cash settlement still rounds to cents. Migration V3 keeps older receipts readable with a null market timestamp.
+5. `DailyHistory.java` fetches daily closes on demand from one provider per response. Completed UTC days prevent a partial current-day candle from skewing later risk calculations. Full results are cached per asset/provider until UTC midnight. Short results are cached for one minute and a requested window with a gap returns 503. Provider failures start a cooldown, including at least 60 seconds for HTTP 429/418 and longer numeric Retry-After instructions. Daily history is independent of the executable quote.
+
+**Try the API** after logging in with the PowerShell account example.
+
+```powershell
+$auth = @{ Authorization = "Bearer $($session.accessToken)" }
+Invoke-RestMethod "$api/market/prices" -Headers $auth | ConvertTo-Json -Depth 5
+(Invoke-RestMethod "$api/market/history/ETH?days=7" -Headers $auth).prices
+```
+
+### Verification and interview notes
+
+Live smoke checks on 21 November 2026 exercised Binance and Coinbase separately. For each provider, the packaged API received fresh BTC and ETH ticks, the signed-in browser rendered the WebSocket price cards, both history requests returned three completed daily closes, and one virtual BTC purchase recorded the provider and exchange timestamp. Availability depends on the network and provider.
+
+Run `.\mvnw.cmd verify` from `backend`, then use the earlier PostgreSQL test commands for a database-backed run. Run `npm.cmd run build` from `frontend`. Tests explicitly select mock mode. Market tests use sample exchange frames, mocked HTTP responses and a fixed clock. They exercise precision, stale and reordered prices, loss of connection, failover, candle ordering and rate limits. The trading suite also checks that an outage blocks a new trade while a prior receipt still replays with its exact price and quote time.
+
+| Interview question | Answer |
+| --- | --- |
+| Why keep the latest quote in memory? | This single-process application needs two current prices. Reading memory during a wallet transaction avoids waiting for an external network request while holding a database lock. Executed quotes persist in PostgreSQL. |
+| Why use the exchange timestamp? | A delayed packet can arrive now with an old trade price. Measuring age against exchange time catches that case. |
+| What does LIVE mean here? | The price is an observed trade on the selected exchange. A paper order assumes a complete fill at that price. It does not model an order book, slippage, fees, stablecoin exchange rates or market impact. |
+| What happens on provider change? | The book clears the previous session's quotes. The alternate provider must publish a valid price for an asset before trading resumes. History uses a single source per window. |
+
+Provider contracts: [Binance spot streams](https://developers.binance.com/docs/binance-spot-api-docs/web-socket-streams), [Binance daily klines](https://developers.binance.com/docs/binance-spot-api-docs/rest-api/market-data-endpoints), [Coinbase ticker](https://docs.cdp.coinbase.com/exchange/websocket-feed/channels), [Coinbase daily candles](https://docs.cdp.coinbase.com/api-reference/exchange-api/rest-api/products/get-product-candles).
