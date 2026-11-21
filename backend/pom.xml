@@ -8,7 +8,7 @@
   </parent>
   <groupId>dev.riskaware</groupId>
   <artifactId>simulator</artifactId>
-  <version>0.1.0</version>
+  <version>0.2.0</version>
   <name>Risk-Aware Crypto Trading Simulator</name>
   <properties><java.version>21</java.version></properties>
   <dependencies>
