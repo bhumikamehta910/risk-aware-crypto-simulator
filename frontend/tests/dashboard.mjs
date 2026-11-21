@@ -33,6 +33,7 @@ try {
   }
   await metric('cash','$10,000.00')
   await page.locator('#market summary').waitFor({timeout:45000})
+  await page.locator('.feed-status').filter({hasText:/· Connected/}).waitFor({timeout:45000})
   assert.equal(original.mode,mode)
   async function review(asset,side,quantity) {
     await ticket.getByLabel('Asset',{exact:true}).selectOption(asset)
@@ -52,12 +53,39 @@ try {
     return receipt
   }
   if (mode==='LIVE') {
+    const risk = page.locator('#risk')
+    await risk.getByText(/7 daily closes · 6 daily returns/).waitFor({timeout:45000})
+    await risk.getByLabel('Historical risk asset').selectOption('ETH')
+    await risk.getByLabel('Historical risk window').selectOption('30')
+    await risk.getByText(/30 daily closes · 29 daily returns/).waitFor({timeout:45000})
+    await review('BTC','buy','0.001')
+    await ticket.getByRole('heading',{name:'Pre-trade risk preview'}).waitFor()
+    assert.match(await ticket.locator('.risk-preview').innerText(),/Indicative snapshot/)
+    await ticket.getByRole('button',{name:'Edit order'}).click()
     const receipt=await order('BTC','buy','0.001')
     assert.notEqual(receipt.priceSource,'MOCK_FIXED')
     await page.locator('#positions tbody tr').first().waitFor()
     if (process.env.DASHBOARD_SCREENSHOT) await page.screenshot({path:process.env.DASHBOARD_SCREENSHOT,fullPage:true})
     console.log('Verified live browser purchase and history from '+receipt.priceSource)
   } else {
+    const risk=page.locator('#risk')
+    await risk.getByText(/Fixed demo prices have no observed/).waitFor()
+    await risk.getByText('Trading limits',{exact:true}).click()
+    await risk.getByLabel('BTC allocation cap (%)').fill('5')
+    await risk.getByRole('button',{name:'Save limits'}).click()
+    await risk.getByText('Trading limits saved.').waitFor()
+    await review('BTC','buy','0.02')
+    const assessment=ticket.locator('.risk-preview')
+    await assessment.getByText(/Limit exceeded/).waitFor()
+    assert.ok(await button('Confirm simulated buy').isDisabled())
+    assert.match(await assessment.locator('.risk-allocation tbody tr').first().innerText(),/0.00%\s+10.00%/)
+    assert.match(await assessment.locator('.scenario-table tbody tr').last().innerText(),/200.00[\s\S]*9,800.00/)
+    if (process.env.RISK_PREVIEW_SCREENSHOT) await ticket.screenshot({path:process.env.RISK_PREVIEW_SCREENSHOT})
+    await metric('cash','$10,000.00')
+    await risk.getByLabel('BTC allocation cap (%)').fill('100')
+    await risk.getByRole('button',{name:'Save limits'}).click()
+    await button('Review buy').waitFor()
+    await risk.getByText('Trading limits',{exact:true}).click()
     // Simulate a lost HTTP response after the server has already committed.
     let lostKey
     await page.route('**/api/trades',async route=>{

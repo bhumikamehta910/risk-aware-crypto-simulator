@@ -41,6 +41,19 @@ class TradeController {
         return trading.execute(UUID.fromString(jwt.getSubject()), key, order);
     }
 
+    @PostMapping("/trades/preview")
+    OrderAssessment preview(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody Order order) {
+        return trading.preview(UUID.fromString(jwt.getSubject()), order);
+    }
+
+    @GetMapping("/risk/limits")
+    RiskLimits limits(@AuthenticationPrincipal Jwt jwt) { return trading.limits(UUID.fromString(jwt.getSubject())); }
+
+    @PutMapping("/risk/limits")
+    RiskLimits limits(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody RiskLimits limits) {
+        return trading.updateLimits(UUID.fromString(jwt.getSubject()), limits);
+    }
+
     @GetMapping("/holdings")
     List<Holding> holdings(@AuthenticationPrincipal Jwt jwt) {
         return trading.holdings(UUID.fromString(jwt.getSubject()));

@@ -28,3 +28,22 @@
 .filters{gap:6px}.filters select{padding:5px}.pager{justify-content:flex-end;gap:7px;margin-top:12px}.pager small{margin-right:auto}.pager button{padding:5px 10px}.placeholder{color:#64766a;font-size:14px;padding:24px 0}.warning{color:#76511f;background:#fcf3dc;font-size:14px;padding:10px;border-radius:6px;margin-top:8px}.trade-side{font-size:11px;font-weight:700;padding:3px 6px;border-radius:4px}.BUY{background:#e5f0de}.SELL{background:#f7e8df;color:#804c35}
 @media(max-width:800px){.desk-header{gap:12px}.desk-header nav{gap:10px}.quotes-grid,.summary-grid{gap:12px}.quote+.quote{padding-left:10px}.quote{flex-wrap:wrap}.quote-price{width:100%;text-align:left}.desk-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:650px){.dashboard{padding:16px 12px}.desk-header{flex-wrap:wrap}.desk-header nav{width:100%;order:3;justify-content:space-between}.signout{margin-left:auto}.desk-title{display:block}.summary-grid,.desk-grid{grid-template-columns:1fr}.net-value{padding:20px}.quotes{padding:15px}.quote-price b{font-size:14px}.section-head{flex-wrap:wrap}.desk-title{margin-top:18px}.dashboard .account{display:block;margin-top:4px}}
+
+.risk-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:20px}
+.risk-grid>div+div {border-left:1px solid #dce4dc;padding-left:20px}
+.risk-panel h3,.risk-preview h3 {font-size:17px;font-weight:650;letter-spacing:-.025em}
+.risk-panel p,.risk-preview p {font-size:13px;line-height:1.55;margin:8px 0}
+.risk-controls,.risk-stats,.limit-form {display:flex;flex-wrap:wrap;gap:12px}
+.risk-controls label,.limit-form label {display:grid;gap:4px;font-size:12px}.risk-controls select {padding:5px}
+.risk-stats {margin-top:12px}.risk-stats strong {display:block;font-size:24px;color:#205641}
+.allocation-bar {display:flex;height:12px;border-radius:8px;overflow:hidden;background:#e4eadf;margin:12px 0}
+.slice-btc {background:#bf9851}.slice-eth {background:#7673a3}.slice-cash {background:#7ea47c}
+.asset-key {display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+.dashboard .risk-panel table,.dashboard .risk-preview table {font-size:12px;white-space:normal}
+.dashboard .risk-panel th,.dashboard .risk-panel td,.dashboard .risk-preview th,.dashboard .risk-preview td {padding:7px 4px}
+.scenario-table small {display:block;font-size:11px}.risk-preview {border:1px solid #bfd3c3;background:#f6faf3;border-radius:10px;padding:14px}.risk-preview h4 {font-size:14px;font-weight:650;margin:14px 0 5px}
+.risk-preview dl {display:grid;grid-template-columns:1fr auto;gap:5px;margin:8px 0;padding:8px 0;border-bottom:1px solid #d2dfd1}
+.risk-preview dt,.risk-preview dd {font-size:13px;margin:0}.risk-preview dd {text-align:right}
+.dashboard .limit-settings {border-top:1px solid #dae2d6;padding-top:14px;margin-top:20px}.limit-settings summary {font-size:15px;font-weight:650}
+.limit-form {margin-top:12px;align-items:end}.limit-form input {width:150px}.limit-form p {width:100%}
+@media(max-width:900px){.risk-grid{grid-template-columns:1fr}.risk-grid>div+div{border-left:0;border-top:1px solid #dae2d6;padding:14px 0 0}}

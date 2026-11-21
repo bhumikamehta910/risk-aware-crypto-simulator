@@ -2,7 +2,7 @@ package dev.riskaware.simulator.trading;
 
 import java.math.BigDecimal;
 import dev.riskaware.simulator.market.MarketBook;
-import java.math.RoundingMode;
+import org.springframework.transaction.annotation.Isolation;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -38,27 +38,33 @@ class TradeService {
             return trade;
         }
 
-        var quote = market.executable(order.asset());
-        BigDecimal quantity = order.quantity().setScale(8);
-        BigDecimal gross = quantity.multiply(quote.priceUsd());
-        if (gross.compareTo(new BigDecimal("0.01")) < 0) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Minimum order value is one virtual cent");
+        var assessment = assess(user, cash, order);
+        if (!assessment.violations().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, String.join(" ", assessment.violations()));
         }
-
-        boolean buy = order.side() == Side.BUY;
-        BigDecimal total = gross.setScale(2, buy ? RoundingMode.CEILING : RoundingMode.FLOOR);
-        BigDecimal held = repository.quantity(user, order.asset());
-        BigDecimal nextCash = buy ? cash.subtract(total) : cash.add(total);
-        BigDecimal nextHeld = buy ? held.add(quantity) : held.subtract(quantity);
-        if (nextCash.signum() < 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient virtual cash");
-        if (nextHeld.signum() < 0) throw new ResponseStatusException(HttpStatus.CONFLICT, "Insufficient " + order.asset() + " holdings");
-
-        var trade = new Trade(UUID.randomUUID(), order.asset(), order.side(), quantity, quote.priceUsd(),
-                total, quote.source(), Instant.now().truncatedTo(ChronoUnit.MICROS), quote.priceTime());
-        repository.updateCash(user, nextCash);
-        repository.updateHolding(user, order.asset(), held, nextHeld);
+        var quote = assessment.quote();
+        var trade = new Trade(UUID.randomUUID(), order.asset(), order.side(), order.quantity().setScale(8), quote.priceUsd(),
+                assessment.transactionUsd(), quote.source(), Instant.now().truncatedTo(ChronoUnit.MICROS), quote.priceTime());
+        repository.updateCash(user, assessment.projected().cash());
+        repository.updateHolding(user, order.asset(), assessment.held(), assessment.nextHeld());
         repository.append(user, key, trade);
         return trade;
+    }
+
+    private OrderAssessment assess(UUID user, BigDecimal cash, Order order) {
+        return OrderAssessment.evaluate(order, cash, repository.holdings(user), repository.limits(user), market);
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public OrderAssessment preview(UUID user, Order order) { return assess(user, repository.cash(user), order); }
+
+    public RiskLimits limits(UUID user) { return repository.limits(user); }
+
+    @Transactional
+    public RiskLimits updateLimits(UUID user, RiskLimits limits) {
+        repository.lockCash(user);
+        repository.saveLimits(user, limits);
+        return limits;
     }
 
     public List<Holding> holdings(UUID user) { return repository.holdings(user); }

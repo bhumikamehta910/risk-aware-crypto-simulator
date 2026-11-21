@@ -157,17 +157,78 @@ class TradeIntegrationTest {
     }
 
     List<MockHttpServletResponse> race(UUID firstKey, UUID secondKey, String side) throws Exception {
+        return race(firstKey, secondKey, side, "0.15");
+    }
+
+    List<MockHttpServletResponse> race(UUID firstKey, UUID secondKey, String side, String quantity) throws Exception {
         var start = new CyclicBarrier(2);
         try (var workers = Executors.newFixedThreadPool(2)) {
             var results = new ArrayList<Future<MockHttpServletResponse>>();
             for (UUID key : List.of(firstKey, secondKey)) {
                 results.add(workers.submit(() -> {
                     start.await(10, TimeUnit.SECONDS);
-                    return order(key, "BTC", side, "0.15");
+                    return order(key, "BTC", side, quantity);
                 }));
             }
             return List.of(results.get(0).get(20, TimeUnit.SECONDS), results.get(1).get(20, TimeUnit.SECONDS));
         }
+    }
+
+    @Test
+    void previewAndExecutionRecheckCurrentLimitsWithoutMutatingRejectedOrders() throws Exception {
+        var preview = http.perform(post("/api/trades/preview").header("Authorization", bearer).contentType("application/json")
+                .content("{\"asset\":\"BTC\",\"side\":\"BUY\",\"quantity\":0.02}")).andReturn().getResponse();
+        assertThat(preview.getStatus()).isEqualTo(200);
+        assertThat(tree(preview).at("/projected/btc").decimalValue()).isEqualByComparingTo("1000");
+        assertThat(tree(preview).at("/current/cash").decimalValue()).isEqualByComparingTo("10000");
+        state("10000", "0", 0);
+        setLimits("999.99", "5", "100");
+        UUID key = UUID.randomUUID();
+        var rejection = order(key, "BTC", "BUY", "0.02");
+        assertThat(rejection.getStatus()).isEqualTo(422);
+        assertThat(tree(rejection).get("detail").asText()).contains("999.99", "allocation limit");
+        state("10000", "0", 0);
+        setLimits("1000", "10", "100");
+        assertThat(order(key, "BTC", "BUY", "0.02").getStatus()).isEqualTo(200);
+        setLimits("null", "0", "100");
+        assertThat(order(key, "BTC", "BUY", "0.02").getStatus()).isEqualTo(200);
+        assertThat(order(UUID.randomUUID(), "BTC", "SELL", "0.01").getStatus()).isEqualTo(200);
+        state("9500", "0.01", 2);
+        openAccount();
+        assertThat(read("/api/risk/limits").get("btcPct").decimalValue()).isEqualByComparingTo("100");
+    }
+
+    void setLimits(String max, String btc, String eth) throws Exception {
+        String body = "{\"maxOrderUsd\":" + max + ",\"btcPct\":" + btc + ",\"ethPct\":" + eth + "}";
+        var response = http.perform(put("/api/risk/limits").header("Authorization", bearer)
+                .contentType("application/json").content(body)).andReturn().getResponse();
+        assertThat(response.getStatus()).isEqualTo(200);
+    }
+
+    @Test
+    void newQuoteCanBlockPreviouslyAffordablePreviewAndMissingOtherMarkFailsClosed() throws Exception {
+        setLimits("1000", "100", "100");
+        String body = "{\"asset\":\"ETH\",\"side\":\"BUY\",\"quantity\":0.4}";
+        var preview = http.perform(post("/api/trades/preview").header("Authorization", bearer).contentType("application/json")
+                .content(body)).andReturn().getResponse();
+        assertThat(tree(preview).get("violations").isEmpty()).isTrue();
+        doReturn(new MarketBook.Price(TradingApi.Asset.ETH, new BigDecimal("3000"), "COINBASE_USD", java.time.Instant.now()))
+                .when(market).executable(TradingApi.Asset.ETH);
+        assertThat(order(UUID.randomUUID(), "ETH", "BUY", "0.4").getStatus()).isEqualTo(422);
+        state("10000", "0", 0);
+        assertThat(order(UUID.randomUUID(), "ETH", "BUY", "0.1").getStatus()).isEqualTo(200);
+        doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE, "ETH price is STALE")).when(market).executable(TradingApi.Asset.ETH);
+        assertThat(order(UUID.randomUUID(), "BTC", "BUY", "0.01").getStatus()).isEqualTo(503);
+        state("9700", "0.1", 1);
+    }
+
+    @Test
+    void competingAffordableBuysCannotCrossAllocationCap() throws Exception {
+        setLimits("null", "40", "100");
+        var buys = race(UUID.randomUUID(), UUID.randomUUID(), "BUY", "0.05");
+        assertThat(buys).extracting(MockHttpServletResponse::getStatus).containsExactlyInAnyOrder(200, 422);
+        state("7500", "0.05", 1);
     }
 
     @Test

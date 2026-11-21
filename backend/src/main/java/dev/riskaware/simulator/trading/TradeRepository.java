@@ -20,6 +20,16 @@ class TradeRepository {
 
     TradeRepository(JdbcClient db) { this.db = db; }
 
+    RiskLimits limits(UUID user) {
+        return db.sql("SELECT max_order_usd, btc_limit_pct, eth_limit_pct FROM wallets WHERE user_id = ?")
+                .param(user).query((rs, i) -> new RiskLimits(rs.getBigDecimal(1), rs.getBigDecimal(2), rs.getBigDecimal(3))).single();
+    }
+
+    void saveLimits(UUID user, RiskLimits limits) {
+        db.sql("UPDATE wallets SET max_order_usd = ?, btc_limit_pct = ?, eth_limit_pct = ? WHERE user_id = ?")
+                .param(1, limits.maxOrderUsd(), java.sql.Types.NUMERIC).param(2, limits.btcPct()).param(3, limits.ethPct()).param(4, user).update();
+    }
+
     BigDecimal cash(UUID user) {
         return db.sql("SELECT cash_usd FROM wallets WHERE user_id = ?").param(user).query(BigDecimal.class).single();
     }
@@ -36,11 +46,6 @@ class TradeRepository {
     Optional<Trade> previous(UUID user, UUID key) {
         return db.sql("SELECT * FROM trades WHERE user_id = ? AND request_key = ?")
                 .params(user, key).query(TRADE).optional();
-    }
-
-    BigDecimal quantity(UUID user, Asset asset) {
-        return db.sql("SELECT quantity FROM holdings WHERE user_id = ? AND asset = ?")
-                .params(user, asset.name()).query(BigDecimal.class).optional().orElse(BigDecimal.ZERO);
     }
 
     void updateCash(UUID user, BigDecimal cash) {

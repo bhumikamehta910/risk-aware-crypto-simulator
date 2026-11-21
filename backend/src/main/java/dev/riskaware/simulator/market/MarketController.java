@@ -3,7 +3,9 @@ package dev.riskaware.simulator.market;
 import dev.riskaware.simulator.trading.TradingApi.Asset;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import jakarta.validation.constraints.*;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/market")
@@ -22,5 +24,14 @@ class MarketController {
     @GetMapping("/history/{asset}")
     DailyHistory.Series history(@PathVariable Asset asset, @RequestParam(defaultValue = "30") @Min(1) @Max(90) int days) {
         return history.history(asset, days);
+    }
+
+    @GetMapping("/risk/{asset}")
+    HistoricalRisk risk(@PathVariable Asset asset, @RequestParam(defaultValue = "7") int days) {
+        if (days != 7 && days != 30) throw new ResponseStatusException(
+                HttpStatus.BAD_REQUEST, "Choose 7 or 30 completed days");
+        if (book.mock()) throw new ResponseStatusException(
+                HttpStatus.SERVICE_UNAVAILABLE, "Historical observations require live market data.");
+        return HistoricalRisk.measure(history.history(asset, days), days);
     }
 }

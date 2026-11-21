@@ -253,7 +253,7 @@ Sign in to see the portfolio, BTC/ETH feed, daily chart, order ticket, positions
 
 ### Start and try a trade
 
-Use the Windows setup at the top for a new checkout. In the prepared workspace, stop any previous API instance in its terminal and run the packaged 0.4.0 API in PowerShell.
+Use the Windows setup at the top for a new checkout. In the prepared workspace, stop any previous API instance in its terminal and run the packaged API in PowerShell.
 
 ```powershell
 Set-Location "$HOME\Desktop\crypto"
@@ -309,3 +309,51 @@ npm.cmd run test:dashboard
 The mock check exercises both assets and sides, a committed order whose response is dropped, retry and double-click behavior, price-driven value changes, stale prices, insufficient funds and holdings, filters, chart periods, a mobile viewport and session expiry. Injected price changes and a simulated HTTP 401 are confined to the test browser. Set both the backend and test mode to LIVE for the real-provider check, which places a virtual BTC order, reads the live receipt and displays the position.
 
 For a README or interview screenshot, use a disposable account and keep the market-mode indicator visible. Capture the overview after a buy and partial sale, then capture a filtered history row with its matching receipt. To save a full-page image during the mock test, set `$env:DASHBOARD_SCREENSHOT` to a writable absolute PNG path before running it.
+
+## Phase 5 — historical risk and pre-trade preview
+
+Sign in and open **Risk** in the dashboard navigation. Historical observations describe a named exchange and past UTC dates. Current concentration uses your settled wallet and holdings. The order ticket has its own indicative assessment, taken when you select **Review**. Confirming sends the original order to the existing execution endpoint.
+
+### Interpreting the numbers
+
+| Measure | Calculation and interpretation |
+| --- | --- |
+| Daily return | For consecutive completed closes, divide today's close by yesterday's close and subtract one. A move from 100 to 110 gives +10%. |
+| Daily historical volatility | For 7 or 30 closing dates there are 6 or 29 returns. Compute their arithmetic mean, square each return's difference from that mean, sum, divide by the number of returns minus one, then take the square root. Multiply by 100 for a daily percentage. This is sample standard deviation. The display does not annualize it. Large positive and negative moves both contribute. |
+| Maximum drawdown | Walk forward through the closes, keeping the highest close seen so far. At each date compute 100 × (peak − close) / peak. Report the largest decline as a positive magnitude and show its peak and trough dates. An increasing series has zero drawdown and no loss interval. Ties keep the first qualifying interval. |
+| Allocation | Mark each held quantity at its current validated unit price. Total value is BTC value + ETH value + cash. Divide each component by this total. A crypto position above 50% is flagged because that single asset represents a majority of virtual wealth. This descriptive threshold is separate from the user's hard limits. BTC and ETH can move together. |
+| One-asset shock | For a selected drop of 5%, 10% or 20%, loss = marked value of the affected holding × drop fraction. Scenario total = original total − loss. Each column changes one price independently while quantities, cash and the other price are fixed. These scenarios have no probability attached. |
+
+A known volatility example uses seven closes of 100, 110, 99, 99, 99, 99 and 99. The six daily returns are +10%, −10% and four zeros. Their mean is zero. The sample daily volatility is about 6.32% and maximum drawdown is 10%, from 110 to 99. Neither statistic bounds future losses. The window excludes earlier peaks and daily closes can miss intraday losses.
+
+### Architecture and execution rules
+
+- **History.** Authenticated `GET /api/market/risk/{BTC|ETH}?days=7` accepts 7 or 30. `HistoricalRisk` consumes the existing daily-history cache and requires the whole consecutive window of positive exchange closes. It returns source, dates, counts, daily volatility and drawdown dates. An incomplete window or provider failure produces an unavailable state. MOCK_FIXED keeps the educational order preview and scenarios available, and suppresses observed historical metrics. No historical series is generated for risk analysis.
+- **Limits.** `GET /api/risk/limits` and `PUT /api/risk/limits` read and save the JWT owner's settings. Migration V4 adds three fields to the existing wallet. The defaults preserve previous trading behavior: maximum virtual order value disabled, BTC and ETH caps each 100%. An empty order cap clears it. Allocation caps allow 0–100%, including both endpoints.
+- **Preview.** `POST /api/trades/preview` takes the same asset, side and quantity as an order. A read-only repeatable-read transaction reads one consistent account state. `OrderAssessment` captures a fresh price for the traded asset and each held asset from the same in-memory feed generation. It applies the established buy-up/sell-down cent settlement, then computes current and projected exposures. The response includes quote time, source, assessed amount, limits and violations. The preview neither reserves cash nor creates a trade.
+- **Confirmation.** After acquiring the wallet lock, execution checks for an existing idempotent receipt first. For a new order it reads current holdings, current settings and validated quotes, then runs the same assessment. Limit changes take that wallet lock too. Only a passing order reaches the wallet, holdings and immutable trade writes. Browser percentages are rounded for display. The backend compares exact BigDecimal amounts by cross-multiplication.
+- **Which trades are blocked?** The order-value limit checks the actual settled amount on both buys and sells. A buy cannot take the purchased asset above its cap. A sale can reduce an already overweight position, subject to the order-value limit. Price drift alone never liquidates a holding. Exactly meeting a limit is allowed. A warning about majority exposure is informational. A hard breach gives HTTP 422 with the values and the limit. Invalid orders, insufficient balances and unavailable quotes retain their existing validation errors.
+- **Limitations.** The display uses the browser's numeric precision for indicative allocations and scenario amounts. Execution checks use backend decimals. Preview values can change before confirmation. A stale price on a different held asset can also prevent execution because the allocation denominator requires a complete valuation. Fees remain zero, and Binance USDT is valued at one virtual USD. The shocks omit correlated moves, slippage and liquidity. They are illustrations rather than forecasts.
+
+### Manual verification
+
+The [verified order-ticket screenshot](docs/risk-preview.png) shows the 5% BTC cap blocking a proposed 10% allocation, along with all six post-trade scenarios.
+
+Use the Phase 4 Windows startup commands. In the prepared workspace, the local launcher loads the 0.5.0 JAR. Start with MOCK_FIXED and a new $10,000 virtual account.
+
+1. Open Risk → Trading limits. Set BTC's cap to 5% and save. Review a buy of 0.02 BTC at the fixed $50,000 quote. The proposed order is $1,000, taking BTC from 0% to 10%. Confirmation is disabled. The cash balance is still $10,000.
+2. Inspect the 20% BTC shock in that preview. It shows a $200 hypothetical loss and $9,800 remaining. The same ETH shock loses $0 because this portfolio holds no ETH.
+3. Set BTC's cap to 10%, review again, then confirm. The receipt and holdings reflect one purchase. Set the cap below the new allocation and review a partial sale. The sale can reduce the position. Try a maximum order of $50 and review a larger sale to exercise the independent order-value limit.
+4. Restart in LIVE mode, sign in and choose each asset and window. Check the provider, UTC dates, 6 or 29 returns, and peak/trough interval. The hypothetical panel remains available independently of a historical API failure if current quotes are fresh.
+5. To exercise execution-time enforcement manually, review an allowed buy, tighten the limit in another signed-in tab for the same account, and confirm in the first tab. The server rejects the trade using the updated limit.
+
+Run the Maven, PostgreSQL and Edge test commands documented above. The risk tests include known daily returns, a multi-day decline with a partial recovery, missing dates, mock-history exclusion, cap equality, ownership and idempotent replay. They verify that rejected trades leave cash, holdings and history intact when a price or limit changes or another holding becomes stale. Two individually affordable concurrent buys can commit only within their shared allocation cap. The dashboard browser check exercises a blocked preview and an allowed confirmation. LIVE mode also checks observed historical windows.
+
+### Interview questions
+
+| Question | Answer |
+| --- | --- |
+| Why do seven closes yield six returns? | A return compares two consecutive prices. The first close supplies the starting point. |
+| Why can two assets have similar volatility and different drawdowns? | Volatility measures dispersion of daily returns. Drawdown depends on their sequence and measures a cumulative decline from an earlier peak. |
+| Why validate twice? | Review captures an indicative portfolio. Another order, a limit edit or a new quote can change the result. Checking again while the wallet is locked prevents simultaneous orders from both spending the same allocation headroom. |
+| Why skip historical metrics offline? | A flat demo price encodes no observation about the real market. Reporting zero observed risk from that series would mislead the learner. |
