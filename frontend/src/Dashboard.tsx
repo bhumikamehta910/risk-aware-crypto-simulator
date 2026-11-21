@@ -74,6 +74,6 @@ export function Dashboard({profile,token,onExit}: {profile:Profile;token:string;
          <td className={p.unrealized!==null&&p.unrealized<0?'loss':'gain'}>{p.unrealized===null?'—':signed(p.unrealized)}</td></tr>)}</tbody></table></div>}
       {!!rows?.length && <small className="convention">¹ Share of total portfolio value, including cash.</small>}</section>
     <TradeHistory api={api} revision={revision}/>
-    <footer>Virtual money only · Educational simulator · No financial advice</footer>
+    <footer>All trades use virtual money. Historical risk statistics do not predict future outcomes. For education only.</footer>
   </main>
 }

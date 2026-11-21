@@ -19,9 +19,11 @@ try {
     })
   })
   const credentials = {email:'dashboard-'+crypto.randomUUID()+'@example.test',password:'local-browser-test-passphrase'}
-  assert.equal((await page.request.post(url+'/api/auth/register',{data:credentials})).status(),201)
   await page.goto(url)
-  await page.getByRole('button',{name:'Sign in',exact:true}).click()
+  await page.getByLabel('Email address').fill(credentials.email)
+  await page.getByLabel('Password',{exact:true}).fill(credentials.password)
+  await page.locator('form').getByRole('button',{name:'Create account'}).click()
+  await page.getByRole('status').filter({hasText:'Account created'}).waitFor()
   await page.getByLabel('Email address').fill(credentials.email)
   await page.getByLabel('Password',{exact:true}).fill(credentials.password)
   await page.locator('form button').click()

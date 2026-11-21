@@ -86,8 +86,8 @@ function App() {
         <p className="muted">{registering ? 'Start with $10,000 in virtual USD.' : 'Sign in to your simulator account.'}</p>
         <form onSubmit={submit}>
           <label htmlFor="email">Email address</label><input id="email" autoComplete="email" type="email" required maxLength={254} placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)}/>
-          <label htmlFor="password">Password</label><input id="password" type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={12} maxLength={registering ? undefined : 72} value={password} onChange={e => setPassword(e.target.value)}/>
-          {registering && <small className="muted">Use at least 12 characters.</small>}
+          <label htmlFor="password">Password</label><input id="password" aria-describedby={registering ? 'password-hint' : undefined} type="password" autoComplete={registering ? 'new-password' : 'current-password'} required minLength={12} maxLength={registering ? undefined : 72} value={password} onChange={e => setPassword(e.target.value)}/>
+          {registering && <small id="password-hint" className="muted">Use at least 12 characters.</small>}
           {error && <p role="alert" className="error">{error}</p>}
           {notice && <p role="status" className="notice">{notice}</p>}
           <button disabled={busy} className="action">{busy ? 'Please wait…' : registering ? 'Create account' : 'Sign in'}<span aria-hidden="true">→</span></button>

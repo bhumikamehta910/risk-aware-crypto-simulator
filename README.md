@@ -1,8 +1,68 @@
 # Risk-Aware Crypto Trading Simulator
 
-An educational paper-trading project for practicing with virtual USD. Phase 1 provides a persistent account, a $10,000 opening balance, and authenticated account lookup. A React client supports registration, sign-in and account overview. Swagger UI provides a second way to exercise the API. All balances are virtual. This project is for learning and does not provide financial advice.
+Practice buying and selling BTC and ETH with $10,000 in virtual USD. Review an order to see how it changes concentration and how much the projected portfolio would lose under six single-asset price shocks. Confirmation checks the latest prices, balances and personal limits again. All trades use virtual money. Historical risk statistics do not predict future outcomes. This simulator is for education only.
 
-Phase 3 supplies live BTC and ETH prices to the trading API and signed-in React account screen. The server defaults to LIVE. Set `MARKET_MODE=MOCK_FIXED` before startup for the reproducible Phase 2 demonstration below.
+**For a five-minute demo**, register, sign in, set a 5% BTC allocation cap and review a purchase that exceeds it. Then reduce the quantity, confirm once and inspect the receipt and portfolio. Use `MARKET_MODE=MOCK_FIXED` for repeatable amounts or the default `LIVE` mode for observed daily volatility and drawdown. The dashboard labels the source in either mode.
+
+![Dashboard with live prices, portfolio and historical risk](docs/dashboard-live.png)
+
+![Order preview comparing a proposed BTC position with a 5% allocation limit](docs/risk-preview.png)
+
+### Architecture
+
+```mermaid
+flowchart LR
+    Browser["React dashboard"] <-->|HTTPS and WSS| Edge["Nginx · production"]
+    Edge -->|HTTP on loopback| App["Spring Boot modular monolith"]
+    App -->|Parameterized SQL and JPA| DB[(PostgreSQL)]
+    App <-->|Public WebSocket trades and HTTPS daily closes| Markets["Binance or Coinbase"]
+```
+
+The backend holds two current quotes in memory. Its public WebSocket carries market data only. Authenticated HTTP endpoints serve private portfolios and orders. The account, market, risk and trading modules share a database and a transaction manager. Vite replaces the production proxy during local development.
+
+```mermaid
+sequenceDiagram
+    participant U as Browser
+    participant S as Trading service
+    participant D as PostgreSQL
+    U->>S: Review quantity and side
+    S-->>U: Indicative allocation, shocks and limit checks
+    U->>S: Confirm with bearer token and retry key
+    S->>D: Begin transaction and lock owner's wallet
+    alt Matching committed retry
+        S-->>U: Return original receipt
+    else New intent
+        S->>S: Validate fresh quotes, holdings, cash and limits
+        S->>D: Settle balances and insert receipt atomically
+        S-->>U: Final execution receipt after commit
+    end
+```
+
+For the hosting configuration, security review, limitations and release checks, see the [deployment guide](docs/deployment.md).
+
+### Final verification · 22 November 2026
+
+| Check | Observed result |
+| --- | --- |
+| Java 21 and PostgreSQL 17.5 | Maven packaged the application. All 27 tests passed, including 7 account and 11 trading integration tests plus 9 market-data and risk tests. No tests skipped. |
+| Frontend | TypeScript and Vite production build passed. Microsoft Edge completed both browser suites with the production Spring profile. The npm registry audit reported zero known advisories for the frontend lockfile on this date. |
+| Offline browser demo | Registered and signed in through the forms. Checked the blocked allocation preview, buys and sells, lost-response retry, cent rounding, portfolio P/L, stale-price handling, mobile width and session expiry. |
+| Live browser demo | Read observed BTC 7-close and ETH 30-close windows, reviewed a BTC purchase and received a simulated execution receipt sourced from Binance USDT. Connectivity was verified from the local machine. |
+| Production proxy rehearsal | A loopback Nginx instance with a temporary certificate passed configuration validation, redirected HTTP to HTTPS, served the built UI, returned 401 for a private endpoint, delivered a price snapshot over WSS and returned 429 when the authentication request limit was reached. |
+
+The hosting proposal has been checked against provider documentation. Public DNS, certificate issuance and renewal, exchange access from a cloud IP, and database backup restoration still require verification on an approved host.
+
+### Reading the numbers
+
+At the fixed $50,000 quote, buying 0.02 BTC moves $1,000 from cash into BTC. The portfolio still totals $10,000. A hypothetical 20% BTC drop reduces the position by $200 and the portfolio by 2%, assuming cash and ETH stay unchanged.
+
+| Measure | What to explain during a demo |
+| --- | --- |
+| Profit and loss | Total P/L is marked portfolio value minus the $10,000 starting balance. Unrealized P/L compares remaining holdings with their moving-average cost. Selling a holding can realize a gain while its unrealized P/L goes to zero. |
+| Execution | Java settles with decimal arithmetic. Buys round up and sells round down to cents. A round trip at the same price can cost a cent. The simulator assumes immediate full fills, zero fees and zero slippage. Browser marks are indicative. |
+| Historical risk | Seven consecutive daily closes yield six daily returns. Sample volatility measures their spread. Drawdown follows their order, measuring the worst decline from an earlier closing peak. Both omit intraday moves. Thirty closes yield 29 returns. |
+| Quote currency | Coinbase quotes USD. For Binance the simulator treats 1 USDT as 1 virtual USD. A stablecoin depeg or a price difference between providers can change the apparent portfolio value. |
+| Scenarios | Each scenario shocks a single position. BTC and ETH can fall together, so the individual shocks do not measure the worst possible portfolio loss. |
 
 ## Run locally on Windows
 
@@ -128,7 +188,7 @@ Set-Location backend
 | Why use Spring Security's JWT support? | It centralizes bearer parsing and signature and timestamp checks. Controllers receive an authenticated principal. |
 | Why a database constraint for duplicate email? | Two requests can pass an application-level lookup concurrently. The unique index allows only one row to commit. |
 | How would you revoke a stolen token? | This phase relies on short expiry. Immediate per-user revocation would require additional server-side state. |
-| What would you change before public deployment? | Add HTTPS, login throttling, password recovery, email verification, managed secrets and a dependency support review. Local Swagger testing uses HTTP on loopback. |
+| What changes when this runs publicly? | The production edge handles TLS and throttles requests. The production Spring profile disables API documentation. Operators supply secrets, restrict database access and verify dependency support, backups and provider connectivity. |
 
 ## Phase 2 — trading with mock prices
 
