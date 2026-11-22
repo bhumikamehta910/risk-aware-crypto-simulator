@@ -1,0 +1,13 @@
+**
+!frontend/
+!frontend/src/
+!frontend/src/**
+!frontend/package*.json
+!frontend/index.html
+!frontend/tsconfig*.json
+!frontend/vite.config.ts
+!backend/
+!backend/pom.xml
+!backend/src/
+!backend/src/main/
+!backend/src/main/**

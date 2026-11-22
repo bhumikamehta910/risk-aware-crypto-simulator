@@ -1,13 +1,13 @@
 package dev.riskaware.simulator.account;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import dev.riskaware.simulator.SimulatorApplication;
 import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
@@ -46,7 +46,7 @@ class AccountIntegrationTest {
         var result = credentials("register", email, PASSWORD).andExpect(status().isCreated())
                 .andExpect(jsonPath("$.virtualCashUsd").value(10000))
                 .andExpect(jsonPath("$.passwordHash").doesNotExist()).andReturn();
-        return json.readTree(result.getResponse().getContentAsString()).get("id").asText();
+        return json.readTree(result.getResponse().getContentAsString()).get("id").asString();
     }
 
     @Test
@@ -56,7 +56,7 @@ class AccountIntegrationTest {
         String bobId = register(freshEmail());
         var response = credentials("login", " " + alice.toUpperCase(java.util.Locale.ROOT) + " ", PASSWORD)
                 .andExpect(status().isOk()).andReturn().getResponse();
-        String token = json.readTree(response.getContentAsString()).get("accessToken").asText();
+        String token = json.readTree(response.getContentAsString()).get("accessToken").asString();
         http.perform(get("/api/me").param("userId", bobId).header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.id").value(aliceId))
                 .andExpect(jsonPath("$.email").value(alice)).andExpect(jsonPath("$.virtualCashUsd").value(10000));

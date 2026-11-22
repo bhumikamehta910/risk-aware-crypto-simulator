@@ -1,6 +1,6 @@
 package dev.riskaware.simulator.market;
 
-import com.fasterxml.jackson.databind.*;
+import tools.jackson.databind.*;
 import dev.riskaware.simulator.trading.TradingApi.Asset;
 import java.math.BigDecimal;
 import java.net.URI;
@@ -27,16 +27,16 @@ final class ExchangeData {
     static MarketBook.Price tick(Provider provider, JsonNode message) {
         boolean binance = provider == Provider.BINANCE;
         JsonNode data = binance ? message.path("data") : message;
-        if (!data.path(binance ? "e" : "type").asText().equals(binance ? "aggTrade" : "ticker")) return null;
-        Asset asset = switch (data.path(binance ? "s" : "product_id").asText()) {
+        if (!data.path(binance ? "e" : "type").asString("").equals(binance ? "aggTrade" : "ticker")) return null;
+        Asset asset = switch (data.path(binance ? "s" : "product_id").asString("")) {
             case "BTCUSDT", "BTC-USD" -> Asset.BTC;
             case "ETHUSDT", "ETH-USD" -> Asset.ETH;
             default -> null;
         };
-        if (asset == null || !data.path(binance ? "s" : "product_id").asText()
+        if (asset == null || !data.path(binance ? "s" : "product_id").asString("")
                 .equals(asset.name() + (binance ? "USDT" : "-USD"))) return null;
         Instant time = binance ? Instant.ofEpochMilli(integer(data.required("T")))
-                : Instant.parse(data.required("time").asText());
+                : Instant.parse(data.required("time").asString());
         return new MarketBook.Price(asset, decimal(data.required(binance ? "p" : "price")), source(provider),
                 time.truncatedTo(ChronoUnit.MICROS));
     }
@@ -47,7 +47,7 @@ final class ExchangeData {
     }
 
     private static BigDecimal decimal(JsonNode node) {
-        return MarketBook.validatePrice(new BigDecimal(node.asText()));
+        return MarketBook.validatePrice(new BigDecimal(node.asString()));
     }
 
     static URI candles(Provider provider, Asset asset, LocalDate end) {

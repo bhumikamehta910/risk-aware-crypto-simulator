@@ -1,7 +1,7 @@
 package dev.riskaware.simulator.trading;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import dev.riskaware.simulator.market.MarketBook;
 import dev.riskaware.simulator.security.TokenService;
 import java.math.BigDecimal;
@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
@@ -42,7 +42,7 @@ class TradeIntegrationTest {
                 .content(json.writeValueAsBytes(Map.of("email", email, "password", "trade-test-password"))))
                 .andReturn().getResponse();
         assertThat(response.getStatus()).isEqualTo(201);
-        user = UUID.fromString(tree(response).get("id").asText());
+        user = UUID.fromString(tree(response).get("id").asString());
         bearer = "Bearer " + tokens.issue(user).accessToken();
     }
 
@@ -108,9 +108,9 @@ class TradeIntegrationTest {
         assertThat(order(UUID.randomUUID(), "BTC", "BUY", "0.1").getStatus()).isEqualTo(503);
         assertThat(tree(order(key, "BTC", "BUY", "0.10"))).isEqualTo(receipt);
         var stored = read("/api/trades").get("trades").get(0);
-        assertThat(stored.get("priceTime").asText()).isEqualTo(time.toString());
+        assertThat(stored.get("priceTime").asString()).isEqualTo(time.toString());
         assertThat(stored.get("priceUsd").decimalValue()).isEqualByComparingTo(price);
-        assertThat(stored.get("priceSource").asText()).isEqualTo("COINBASE_USD");
+        assertThat(stored.get("priceSource").asString()).isEqualTo("COINBASE_USD");
         state("4999.98", "0.1", 1);
     }
 
@@ -123,7 +123,7 @@ class TradeIntegrationTest {
         assertThat(order(key, "ETH", "BUY", "0.1").getStatus()).isEqualTo(409);
         state("5000", "0.1", 1);
         var holding = read("/api/holdings").get(0);
-        assertThat(holding.get("asset").asText()).isEqualTo("BTC");
+        assertThat(holding.get("asset").asString()).isEqualTo("BTC");
         assertThat(holding.get("quantity").decimalValue()).isEqualByComparingTo("0.1");
         openAccount();
         assertThat(read("/api/trades").get("trades").size()).isZero();
@@ -146,12 +146,12 @@ class TradeIntegrationTest {
         assertThat(order(UUID.randomUUID(), "ETH", "BUY", "0.010001").getStatus()).isEqualTo(200);
         state("9974.99", "0.010001", 1);
         var sell = tree(order(UUID.randomUUID(), "ETH", "SELL", "0.010001"));
-        assertThat(sell.get("priceSource").asText()).isEqualTo("MOCK_FIXED");
+        assertThat(sell.get("priceSource").asString()).isEqualTo("MOCK_FIXED");
         assertThat(sell.get("totalUsd").decimalValue()).isEqualByComparingTo("25");
         state("9999.99", "0", 2);
         assertThat(read("/api/holdings").size()).isZero();
         assertThat(read("/api/trades?size=1").get("hasNext").asBoolean()).isTrue();
-        assertThat(read("/api/trades?page=1&size=1").get("trades").get(0).get("side").asText()).isEqualTo("BUY");
+        assertThat(read("/api/trades?page=1&size=1").get("trades").get(0).get("side").asString()).isEqualTo("BUY");
         assertThat(read("/api/trades?asset=ETH&side=SELL&from=2000-01-01T00:00:00Z").get("trades").get(0)).isEqualTo(sell);
         assertThat(read("/api/trades?to=2000-01-01T00:00:00Z").get("trades").size()).isZero();
     }
@@ -186,7 +186,7 @@ class TradeIntegrationTest {
         UUID key = UUID.randomUUID();
         var rejection = order(key, "BTC", "BUY", "0.02");
         assertThat(rejection.getStatus()).isEqualTo(422);
-        assertThat(tree(rejection).get("detail").asText()).contains("999.99", "allocation limit");
+        assertThat(tree(rejection).get("detail").asString()).contains("999.99", "allocation limit");
         state("10000", "0", 0);
         setLimits("1000", "10", "100");
         assertThat(order(key, "BTC", "BUY", "0.02").getStatus()).isEqualTo(200);

@@ -10,6 +10,7 @@ import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.*;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -20,6 +21,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.MacAlgorithm;
 import org.springframework.security.oauth2.jwt.*;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy;
 
 @Configuration
 @OpenAPIDefinition(info = @Info(title = "Risk-Aware Crypto Trading Simulator", version = "0.5",
@@ -49,7 +51,16 @@ class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain security(HttpSecurity http) throws Exception {
+    SecurityFilterChain security(HttpSecurity http, Environment env) throws Exception {
+        if (env.matchesProfiles("render")) {
+            String socket = "wss://" + env.getRequiredProperty("RENDER_EXTERNAL_HOSTNAME");
+            http.authorizeHttpRequests(a -> a.requestMatchers(HttpMethod.GET, "/", "/index.html", "/assets/**").permitAll());
+            http.headers(headers -> headers
+                    .referrerPolicy(policy -> policy.policy(ReferrerPolicy.NO_REFERRER))
+                    .contentSecurityPolicy(policy -> policy.policyDirectives(
+                            "default-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' " + socket
+                                    + "; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")));
+        }
         return http
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))

@@ -12,13 +12,13 @@ Practice buying and selling BTC and ETH with $10,000 in virtual USD. Review an o
 
 ```mermaid
 flowchart LR
-    Browser["React dashboard"] <-->|HTTPS and WSS| Edge["Nginx · production"]
-    Edge -->|HTTP on loopback| App["Spring Boot modular monolith"]
-    App -->|Parameterized SQL and JPA| DB[(PostgreSQL)]
+    Browser["React dashboard"] <-->|HTTPS and WSS| Edge["Render HTTPS edge"]
+    Edge -->|HTTP on PORT| App["Spring Boot modular monolith"]
+    App -->|Parameterized SQL and JPA| DB[(Neon PostgreSQL)]
     App <-->|Public WebSocket trades and HTTPS daily closes| Markets["Binance or Coinbase"]
 ```
 
-The backend holds two current quotes in memory. Its public WebSocket carries market data only. Authenticated HTTP endpoints serve private portfolios and orders. The account, market, risk and trading modules share a database and a transaction manager. Vite replaces the production proxy during local development.
+The backend holds two current quotes in memory. Its public WebSocket carries market data only. Authenticated HTTP endpoints serve private portfolios and orders. The account, market, risk and trading modules share a database and a transaction manager. On Render, Spring serves the compiled React files from the same JAR. Local development uses Vite and its API and WebSocket proxy.
 
 ```mermaid
 sequenceDiagram
@@ -38,7 +38,7 @@ sequenceDiagram
     end
 ```
 
-For the hosting configuration, security review, limitations and release checks, see the [deployment guide](docs/deployment.md).
+For a free cloud demonstration, use one **Render Free Web Service** and one **Neon Free PostgreSQL** project in Frankfurt. The root Dockerfile builds both halves. Follow the [manual setup, environment variables, budget controls and verification steps](docs/deployment.md) before creating either service.
 
 ### Final verification · 22 November 2026
 
@@ -51,6 +51,10 @@ For the hosting configuration, security review, limitations and release checks, 
 | Production proxy rehearsal | A loopback Nginx instance with a temporary certificate passed configuration validation, redirected HTTP to HTTPS, served the built UI, returned 401 for a private endpoint, delivered a price snapshot over WSS and returned 429 when the authentication request limit was reached. |
 
 The hosting proposal has been checked against provider documentation. Public DNS, certificate issuance and renewal, exchange access from a cloud IP, and database backup restoration still require verification on an approved host.
+
+**Render preparation rehearsal before the framework upgrade.** The bundled JAR served React, private APIs and the price WebSocket through one local HTTPS origin with the `prod,render` profiles and the image's 220 MB heap setting. All 27 backend tests passed against PostgreSQL 17.5. Both Edge suites passed, including socket reconnection, observed Binance history and a live-priced virtual purchase. A separate restart check recovered the same account, cash, position and idempotent receipt. Docker was unavailable on the test machine. Image construction, the actual 512 MB container ceiling, Neon TLS and exchange access from Render Frankfurt still require validation. See the [manual deployment guide](docs/deployment.md).
+
+**Spring Boot 4.1.3 upgrade verification.** All 27 tests passed on PostgreSQL 17.5 and again on H2 with Java 21. The offline Edge suite passed against the bundled Render-profile JAR. A separate upgrade rehearsal preserved a BCrypt login, an unexpired JWT, a saved receipt and balances from 3.5.16. The live browser loaded observed BTC and ETH historical risk, but its buy preview stayed disabled on both runs. All 227 sampled Binance and Coinbase frames were future-dated relative to the test host. Repeat the LIVE browser check on a synchronized host before launch. Docker image construction and Frankfurt connectivity remain deployment checks.
 
 ### Reading the numbers
 
@@ -188,7 +192,7 @@ Set-Location backend
 | Why use Spring Security's JWT support? | It centralizes bearer parsing and signature and timestamp checks. Controllers receive an authenticated principal. |
 | Why a database constraint for duplicate email? | Two requests can pass an application-level lookup concurrently. The unique index allows only one row to commit. |
 | How would you revoke a stolen token? | This phase relies on short expiry. Immediate per-user revocation would require additional server-side state. |
-| What changes when this runs publicly? | The production edge handles TLS and throttles requests. The production Spring profile disables API documentation. Operators supply secrets, restrict database access and verify dependency support, backups and provider connectivity. |
+| What changes when this runs publicly? | Render handles TLS. Spring throttles login and registration. The production Spring profile disables API documentation. Operators supply secrets, restrict database access and verify dependency support, backups and provider connectivity. |
 
 ## Phase 2 — trading with mock prices
 

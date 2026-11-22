@@ -23,7 +23,8 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   if (!response.ok) {
     const problem = await response.json().catch(() => ({}))
     throw new ApiError(response.status, problem.errors?.join('. ') || problem.detail ||
-      (response.status === 429 ? 'Too many requests. Wait a minute and try again.' :
+      ([502,503,504].includes(response.status) ? 'Service temporarily unavailable. If it is waking up, wait a minute and retry.' :
+       response.status === 429 ? 'Too many requests. Wait a minute and try again.' :
        response.status === 401 ? 'Your session expired. Sign in again.' : 'Request failed. Please try again.'))
   }
   return response.json()

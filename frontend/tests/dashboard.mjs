@@ -9,8 +9,9 @@ try {
   const page = await browser.newPage({viewport:{width:1360,height:960}})
   const errors = []
   page.on('pageerror', e=>errors.push(e.message))
-  let relay, original
+  let relay, original, connections = 0
   await page.routeWebSocket('**/ws/prices', route=>{
+    connections++
     relay = route
     const server=route.connectToServer()
     server.onMessage(message=>{
@@ -37,6 +38,11 @@ try {
   await page.locator('#market summary').waitFor({timeout:45000})
   await page.locator('.feed-status').filter({hasText:/· Connected/}).waitFor({timeout:45000})
   assert.equal(original.mode,mode)
+  const previousConnections = connections
+  await relay.close({code:1001, reason:'Browser reconnect check'})
+  await page.locator('.feed-status').filter({hasText:/reconnecting/}).waitFor()
+  await page.locator('.feed-status').filter({hasText:/· Connected/}).waitFor()
+  assert.ok(connections > previousConnections, 'a new socket delivered a price snapshot')
   async function review(asset,side,quantity) {
     await ticket.getByLabel('Asset',{exact:true}).selectOption(asset)
     await button(side==='buy'?'Buy':'Sell').click()
