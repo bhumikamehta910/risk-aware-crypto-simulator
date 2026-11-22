@@ -1,9 +1,12 @@
 package dev.riskaware.simulator.market;
 
 import dev.riskaware.simulator.trading.TradingApi.Asset;
+import java.io.IOException;
 import java.net.http.*;
 import java.time.*;
 import java.util.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
@@ -12,6 +15,7 @@ import static dev.riskaware.simulator.market.MarketConfig.Provider;
 
 @Service
 class DailyHistory {
+    private static final Logger LOG = LoggerFactory.getLogger(DailyHistory.class);
     record Series(Asset asset, String source, String interval, List<Close> prices) {}
     private record Key(Provider provider, Asset asset) {}
     private record Cached(LocalDate until, List<Close> prices, Instant expires) {}
@@ -61,7 +65,7 @@ class DailyHistory {
                 long delay = result.statusCode() == 429 || result.statusCode() == 418 ? 60 : 10;
                 String retry = result.headers().firstValue("Retry-After").orElse("");
                 if (retry.matches("[0-9]{1,9}")) delay = Math.max(delay, Long.parseLong(retry));
-                cooldown.put(provider, clock.instant().plusSeconds(delay));
+                recordFailure(provider, asset, "http", Integer.toString(result.statusCode()), delay);
                 throw unavailable("Daily price provider returned HTTP " + result.statusCode());
             }
             var rows = ExchangeData.closes(provider, ExchangeData.JSON.readTree(result.body()), today);
@@ -69,11 +73,24 @@ class DailyHistory {
             return rows;
         } catch (ResponseStatusException ex) {
             throw ex;
-        } catch (Exception ex) {
-            if (ex instanceof InterruptedException) Thread.currentThread().interrupt();
-            cooldown.put(provider, clock.instant().plusSeconds(10));
-            throw unavailable("Daily price provider unavailable or returned invalid candles");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            recordFailure(provider, asset, "interrupted", ex.getClass().getSimpleName(), 10);
+        } catch (HttpTimeoutException ex) {
+            recordFailure(provider, asset, "timeout", ex.getClass().getSimpleName(), 10);
+        } catch (IOException ex) {
+            recordFailure(provider, asset, "transport", ex.getClass().getSimpleName(), 10);
+        } catch (RuntimeException ex) {
+            recordFailure(provider, asset, "invalid_response", ex.getClass().getSimpleName(), 10);
         }
+        throw unavailable("Daily price provider unavailable or returned invalid candles");
+    }
+
+    private void recordFailure(Provider provider, Asset asset, String reason, String detail, long delay) {
+        Instant retryAt = clock.instant().plusSeconds(delay);
+        cooldown.put(provider, retryAt);
+        LOG.warn("Daily history fetch failed provider={} asset={} reason={} detail={} cooldownSeconds={} retryAt={}",
+                provider, asset, reason, detail, delay, retryAt);
     }
 
     private static ResponseStatusException unavailable(String reason) {

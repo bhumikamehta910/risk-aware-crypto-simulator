@@ -7,6 +7,9 @@ import java.time.*;
 import java.util.*;
 import java.util.concurrent.*;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import static dev.riskaware.simulator.market.MarketConfig.*;
 import static dev.riskaware.simulator.market.ExchangeData.JSON;
 import static org.assertj.core.api.Assertions.*;
@@ -103,7 +106,8 @@ class MarketDataTest {
 
     @SuppressWarnings("unchecked")
     @Test
-    void providerRateLimitBlocksRepeatedRequestsAcrossAssets() throws Exception {
+    @ExtendWith(OutputCaptureExtension.class)
+    void providerRateLimitBlocksRepeatedRequestsAcrossAssets(CapturedOutput captured) throws Exception {
         var http = mock(HttpClient.class);
         HttpResponse<String> response = mock();
         when(http.send(any(), any(HttpResponse.BodyHandler.class))).thenReturn(response);
@@ -113,5 +117,24 @@ class MarketDataTest {
         assertThatThrownBy(() -> history.history(Asset.BTC, 30)).hasMessageContaining("429");
         assertThatThrownBy(() -> history.history(Asset.ETH, 30)).hasMessageContaining("cooling down");
         verify(http).send(any(), any(HttpResponse.BodyHandler.class));
+        assertThat(captured.getAll()).containsOnlyOnce("Daily history fetch failed")
+                .contains("provider=BINANCE asset=BTC reason=http detail=429 cooldownSeconds=120 retryAt=2026-02-03T00:03:00Z");
+    }
+
+    @SuppressWarnings("unchecked")
+    @Test
+    @ExtendWith(OutputCaptureExtension.class)
+    void historyTimeoutIdentifiesTheActiveProviderWithoutLoggingExceptionText(CapturedOutput captured) throws Exception {
+        book.begin(Provider.COINBASE);
+        var http = mock(HttpClient.class);
+        when(http.send(any(), any(HttpResponse.BodyHandler.class)))
+                .thenThrow(new HttpTimeoutException("private diagnostic text"));
+        var history = new DailyHistory(http, book, clock);
+        assertThatThrownBy(() -> history.history(Asset.ETH, 7)).hasMessageContaining("unavailable");
+        assertThatThrownBy(() -> history.history(Asset.BTC, 7)).hasMessageContaining("cooling down");
+        verify(http).send(any(), any(HttpResponse.BodyHandler.class));
+        assertThat(captured.getAll()).containsOnlyOnce("Daily history fetch failed")
+                .contains("provider=COINBASE asset=ETH reason=timeout detail=HttpTimeoutException cooldownSeconds=10")
+                .doesNotContain("private diagnostic text");
     }
 }
